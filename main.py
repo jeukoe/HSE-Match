@@ -1,18 +1,11 @@
 import telebot
+from database import create_database, save_profile, get_profile
 
 bot = telebot.TeleBot('8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8')
 
-# Здесь временно храним анкеты пользователей
-# Формат:
-# user_id: {
-#     "name": "...",
-#     "language": "...",
-#     "interests": "...",
-#     "course": "...",
-#     "institute": "..."
-# }
-profiles = {}
+create_database()
 
+profiles = {}
 # Временные данные пользователя во время заполнения анкеты
 user_data = {}
 
@@ -77,7 +70,15 @@ def get_institute(message):
     user_id = message.from_user.id
     user_data[user_id]["institute"] = message.text
     # Сохраняем готовую анкету
-    profiles[user_id] = user_data[user_id]
+    profile = user_data[user_id]
+    save_profile(
+        user_id,
+        profile["name"],
+        profile["language"],
+        profile["interests"],
+        profile["course"],
+        profile["institute"]
+    )
     # Удаляем временные данные
     del user_data[user_id]
     bot.send_message(
@@ -89,22 +90,25 @@ def get_institute(message):
 @bot.message_handler(commands=["profile"])
 def show_profile(message):
     user_id = message.from_user.id
-    # Проверяем, есть ли анкета
-    if user_id not in profiles:
+    profile = get_profile(user_id)
+
+    if profile is None:
         bot.send_message(
             message.chat.id,
             "У тебя пока нет анкеты.\n"
             "Создать её можно с помощью команды /start"
         )
         return
-    profile = profiles[user_id]
+
+    name, language, interests, course, institute = profile
+
     text = (
         "👤 ТВОЯ АНКЕТА\n\n"
-        f"Имя: {profile['name']}\n"
-        f"Язык программирования: {profile['language']}\n"
-        f"Интересы: {profile['interests']}\n"
-        f"Курс: {profile['course']}\n"
-        f"Институт: {profile['institute']}"
+        f"Имя: {name}\n"
+        f"Язык программирования: {language}\n"
+        f"Интересы: {interests}\n"
+        f"Курс: {course}\n"
+        f"Институт: {institute}"
     )
     bot.send_message(message.chat.id, text)
 
