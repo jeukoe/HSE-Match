@@ -1,5 +1,15 @@
 import telebot
-from database import create_database, save_profile, get_profile
+from telebot import types
+from database import (
+    create_database,
+    save_profile,
+    get_profile,
+    update_name,
+    update_language,
+    update_interests,
+    update_course,
+    update_institute
+)
 
 bot = telebot.TeleBot('8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8')
 
@@ -20,7 +30,6 @@ def start(message):
         "Я помогу тебе создать анкету для поиска участников команды.\n\n"
         "Как тебя зовут?"
     )
-    # Следующее сообщение пользователя будет его именем
     bot.register_next_step_handler(message, get_name)
 
 # Получаем имя
@@ -112,5 +121,117 @@ def show_profile(message):
     )
     bot.send_message(message.chat.id, text)
 
+@bot.message_handler(commands=["edit"])
+def edit_profile(message):
+    keyboard = types.InlineKeyboardMarkup()
+    button_name = types.InlineKeyboardButton(
+        "👤 Имя",
+        callback_data="edit_name"
+    )
+    button_language = types.InlineKeyboardButton(
+        "💻 Язык программирования",
+        callback_data="edit_language"
+    )
+    button_interests = types.InlineKeyboardButton(
+        "🎯 Интересы",
+        callback_data="edit_interests"
+    )
+    button_course = types.InlineKeyboardButton(
+        "🎓 Курс",
+        callback_data="edit_course"
+    )
+    button_institute = types.InlineKeyboardButton(
+        "🏫 Институт",
+        callback_data="edit_institute"
+    )
+    keyboard.add(button_name)
+    keyboard.add(button_language)
+    keyboard.add(button_interests)
+    keyboard.add(button_course)
+    keyboard.add(button_institute)
+    bot.send_message(
+        message.chat.id,
+        "✏️ Что ты хочешь изменить?",
+        reply_markup=keyboard
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_"))
+def edit_callback(call):
+    bot.answer_callback_query(call.id)
+    if call.data == "edit_name":
+        bot.send_message(
+            call.message.chat.id,
+            "Напиши новое имя:"
+        )
+        bot.register_next_step_handler(call.message, change_name)
+    elif call.data == "edit_language":
+        bot.send_message(
+            call.message.chat.id,
+            "Напиши новый язык программирования:"
+        )
+        bot.register_next_step_handler(call.message, change_language)
+    elif call.data == "edit_interests":
+        bot.send_message(
+            call.message.chat.id,
+            "Напиши свои новые интересы:"
+        )
+        bot.register_next_step_handler(call.message, change_interests)
+    elif call.data == "edit_course":
+        bot.send_message(
+            call.message.chat.id,
+            "Напиши свой курс:"
+        )
+        bot.register_next_step_handler(call.message, change_course)
+    elif call.data == "edit_institute":
+        bot.send_message(
+            call.message.chat.id,
+            "Напиши свой институт:"
+        )
+        bot.register_next_step_handler(call.message, change_institute)
+
+def change_name(message):
+    user_id = message.from_user.id
+    new_name = message.text
+    update_name(user_id, new_name)
+    bot.send_message(
+        message.chat.id,
+        f"✅ Имя изменено на: {new_name}"
+    )
+
+def change_language(message):
+    user_id = message.from_user.id
+    new_language = message.text
+    update_language(user_id, new_language)
+    bot.send_message(
+        message.chat.id,
+        f"✅ Язык программирования изменён на: {new_language}"
+    )
+
+def change_interests(message):
+    user_id = message.from_user.id
+    new_interests = message.text
+    update_interests(user_id, new_interests)
+    bot.send_message(
+        message.chat.id,
+        f"✅ Интересы изменены на: {new_interests}"
+    )
+
+def change_course(message):
+    user_id = message.from_user.id
+    new_course = message.text
+    update_course(user_id, new_course)
+    bot.send_message(
+        message.chat.id,
+        f"✅ Курс изменён на: {new_course}"
+    )
+
+def change_institute(message):
+    user_id = message.from_user.id
+    new_institute = message.text
+    update_institute(user_id, new_institute)
+    bot.send_message(
+        message.chat.id,
+        f"✅ Институт изменён на: {new_institute}"
+    )
 
 bot.infinity_polling()
