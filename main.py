@@ -234,4 +234,19 @@ def change_institute(message):
         f"✅ Институт изменён на: {new_institute}"
     )
 
+
+@bot.message_handler(commands=["help"])
+def help_command(message):
+    text = (
+        "👋 Привет! Это бот для поиска участников команды.\n\n"
+        "Вот список доступных команд:\n\n"
+        "/start — создать анкету\n"
+        "/profile — посмотреть свою анкету\n"
+        "/edit — изменить данные анкеты\n"
+        "/help — показать список команд\n\n"
+        "💡 Чтобы начать, введи команду /start "
+        "и ответь на вопросы бота."
+    )
+    bot.send_message(message.chat.id, text)
+
 bot.infinity_polling()
