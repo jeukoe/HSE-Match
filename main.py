@@ -11,7 +11,7 @@ from database import (
     update_institute
 )
 
-bot = telebot.TeleBot('8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8')
+bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8'")
 
 create_database()
 
