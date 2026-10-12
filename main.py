@@ -1,100 +1,224 @@
 import telebot
 from telebot import types
+
 from database import (
     create_database,
     save_profile,
     get_profile,
     update_name,
-    update_language,
+    update_skills,
     update_interests,
     update_course,
-    update_institute
+    update_institute,
+    update_role,
+    update_goal,
+    update_free_time,
+    update_about
 )
-
 bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8'")
 
 create_database()
 
-profiles = {}
-# Временные данные пользователя во время заполнения анкеты
 user_data = {}
+
+
+def registration_keyboard():
+    keyboard = types.ReplyKeyboardMarkup(
+        resize_keyboard=True
+    )
+    keyboard.add(
+        types.KeyboardButton("📝 Зарегистрироваться")
+    )
+    return keyboard
+
+
+def main_menu_keyboard():
+    keyboard = types.ReplyKeyboardMarkup(
+        resize_keyboard=True
+    )
+    keyboard.add(
+        types.KeyboardButton("👤 Моя анкета")
+    )
+    return keyboard
+
 
 @bot.message_handler(commands=["start"])
 def start(message):
     user_id = message.from_user.id
-    # Создаём временное хранилище для пользователя
-    user_data[user_id] = {}
-    bot.send_message(
-        message.chat.id,
-        "Привет! 👋\n"
-        "Я помогу тебе создать анкету для поиска участников команды.\n\n"
-        "Как тебя зовут?"
-    )
-    bot.register_next_step_handler(message, get_name)
 
-# Получаем имя
+    if get_profile(user_id) is not None:
+        bot.send_message(
+            message.chat.id,
+            "С возвращением! Выбери действие:",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        bot.send_message(
+            message.chat.id,
+            "👋 Привет! Добро пожаловать в TeamUp!\n\n"
+            "🤝 Этот бот поможет тебе найти единомышленников "
+            "для учебных и IT-проектов.\n\n"
+            "📝 Создай свою анкету, укажи навыки, интересы "
+            "и направление обучения.\n\n"
+            "✏️ Ты сможешь просматривать и изменять анкету.\n\n"
+            "Нажми кнопку ниже, чтобы начать!",
+            reply_markup=registration_keyboard()
+        )
+
+
+@bot.message_handler(
+    func=lambda message:
+    message.text == "📝 Зарегистрироваться"
+)
+def registration_button(message):
+    user_id = message.from_user.id
+
+    if get_profile(user_id) is not None:
+        bot.send_message(
+            message.chat.id,
+            "У тебя уже есть анкета.",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    user_data[user_id] = {}
+
+    sent = bot.send_message(
+        message.chat.id,
+        "Как тебя зовут?",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+    bot.register_next_step_handler(sent, get_name)
+
+
 def get_name(message):
     user_id = message.from_user.id
     user_data[user_id]["name"] = message.text
-    bot.send_message(
-        message.chat.id,
-        "Отлично! Теперь напиши, какой язык программирования ты знаешь.\n"
-        "Например: Python, C++, Java."
-    )
-    bot.register_next_step_handler(message, get_language)
 
-# Получаем язык программирования
-def get_language(message):
+    sent = bot.send_message(
+        message.chat.id,
+        "Отлично! Теперь напиши, какими навыками ты обладаешь.\n"
+        "Например: Python, C++, HTML, CSS, дизайн."
+    )
+    bot.register_next_step_handler(sent, get_skills)
+
+
+def get_skills(message):
     user_id = message.from_user.id
-    user_data[user_id]["language"] = message.text
-    bot.send_message(
+    user_data[user_id]["skills"] = message.text
+
+    sent = bot.send_message(
         message.chat.id,
         "Какие у тебя интересы?\n"
         "Например: AI, Data Science, игры, веб-разработка."
     )
-    bot.register_next_step_handler(message, get_interests)
+    bot.register_next_step_handler(sent, get_interests)
 
-# Получаем интересы
+
 def get_interests(message):
     user_id = message.from_user.id
     user_data[user_id]["interests"] = message.text
-    bot.send_message(
+
+    sent = bot.send_message(
         message.chat.id,
         "На каком ты курсе?"
     )
-    bot.register_next_step_handler(message, get_course)
+    bot.register_next_step_handler(sent, get_course)
 
-# Получаем курс
+
 def get_course(message):
     user_id = message.from_user.id
     user_data[user_id]["course"] = message.text
-    bot.send_message(
+
+    sent = bot.send_message(
         message.chat.id,
         "В каком институте / университете ты учишься?"
     )
-    bot.register_next_step_handler(message, get_institute)
+    bot.register_next_step_handler(sent, get_institute)
 
-# Получаем институт и создаём анкету
+
 def get_institute(message):
     user_id = message.from_user.id
     user_data[user_id]["institute"] = message.text
-    # Сохраняем готовую анкету
+
+    sent = bot.send_message(
+        message.chat.id,
+        "Какую роль ты хочешь выполнять в команде?\n"
+        "Например: разработчик, дизайнер, аналитик."
+    )
+    bot.register_next_step_handler(sent, get_role)
+
+
+def get_role(message):
+    user_id = message.from_user.id
+    user_data[user_id]["role"] = message.text
+
+    sent = bot.send_message(
+        message.chat.id,
+        "Для чего ты ищешь команду?\n"
+        "Например: хакатон, учебный проект, стартап."
+    )
+    bot.register_next_step_handler(sent, get_goal)
+
+
+def get_goal(message):
+    user_id = message.from_user.id
+    user_data[user_id]["goal"] = message.text
+
+    sent = bot.send_message(
+        message.chat.id,
+        "Сколько времени ты готов(а) уделять проекту?\n"
+        "Например: несколько часов в неделю."
+    )
+    bot.register_next_step_handler(sent, get_free_time)
+
+
+def get_free_time(message):
+    user_id = message.from_user.id
+    user_data[user_id]["free_time"] = message.text
+
+    sent = bot.send_message(
+        message.chat.id,
+        "Расскажи немного о себе. Что тебе интересно "
+        "и чему ты хочешь научиться?"
+    )
+    bot.register_next_step_handler(sent, get_about)
+
+
+def get_about(message):
+    user_id = message.from_user.id
+    user_data[user_id]["about"] = message.text
+
     profile = user_data[user_id]
+
     save_profile(
         user_id,
         profile["name"],
-        profile["language"],
         profile["interests"],
         profile["course"],
-        profile["institute"]
+        profile["institute"],
+        profile["skills"],
+        profile["role"],
+        profile["goal"],
+        profile["free_time"],
+        profile["about"]
     )
-    # Удаляем временные данные
+
     del user_data[user_id]
+
     bot.send_message(
         message.chat.id,
-        "✅ Анкета создана!\n\n"
-        "Чтобы посмотреть её, используй команду /profile"
+        "✅ Анкета создана!\n\nВыбери действие:",
+        reply_markup=main_menu_keyboard()
     )
+
+
+@bot.message_handler(
+    func=lambda message: message.text == "👤 Моя анкета"
+)
+def profile_button(message):
+    show_profile(message)
+
 
 @bot.message_handler(commands=["profile"])
 def show_profile(message):
@@ -104,134 +228,50 @@ def show_profile(message):
     if profile is None:
         bot.send_message(
             message.chat.id,
-            "У тебя пока нет анкеты.\n"
-            "Создать её можно с помощью команды /start"
+            "📝 У тебя пока нет анкеты.\n"
+            "Создай её через главное меню.",
+            reply_markup=registration_keyboard()
         )
         return
 
-    name, language, interests, course, institute = profile
+    (
+        name, interests, course, institute, skills,
+        role, goal, free_time, about
+    ) = profile
 
     text = (
-        "👤 ТВОЯ АНКЕТА\n\n"
-        f"Имя: {name}\n"
-        f"Язык программирования: {language}\n"
-        f"Интересы: {interests}\n"
-        f"Курс: {course}\n"
-        f"Институт: {institute}"
+        "✨ <b>МОЯ АНКЕТА</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 <b>{name}</b>\n"
+        "<i>Участник TeamUp</i>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🛠 <b>НАВЫКИ</b>\n"
+        f"{skills or 'Не указаны'}\n\n"
+        "🎯 <b>ИНТЕРЕСЫ</b>\n"
+        f"{interests or 'Не указаны'}\n\n"
+        "👥 <b>РОЛЬ В КОМАНДЕ</b>\n"
+        f"{role or 'Не указана'}\n\n"
+        "🚀 <b>ЦЕЛЬ ПОИСКА КОМАНДЫ</b>\n"
+        f"{goal or 'Не указана'}\n\n"
+        "⏰ <b>СВОБОДНОЕ ВРЕМЯ</b>\n"
+        f"{free_time or 'Не указано'}\n\n"
+        "📝 <b>О СЕБЕ</b>\n"
+        f"{about or 'Не указано'}\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "🎓 <b>ОБУЧЕНИЕ</b>\n"
+        f"📚 Курс: {course or 'Не указан'}\n"
+        f"🏛 Институт: {institute or 'Не указан'}\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🚀 <i>Ищем единомышленников и создаём проекты!</i>"
     )
-    bot.send_message(message.chat.id, text)
 
-@bot.message_handler(commands=["edit"])
-def edit_profile(message):
-    keyboard = types.InlineKeyboardMarkup()
-    button_name = types.InlineKeyboardButton(
-        "👤 Имя",
-        callback_data="edit_name"
-    )
-    button_language = types.InlineKeyboardButton(
-        "💻 Язык программирования",
-        callback_data="edit_language"
-    )
-    button_interests = types.InlineKeyboardButton(
-        "🎯 Интересы",
-        callback_data="edit_interests"
-    )
-    button_course = types.InlineKeyboardButton(
-        "🎓 Курс",
-        callback_data="edit_course"
-    )
-    button_institute = types.InlineKeyboardButton(
-        "🏫 Институт",
-        callback_data="edit_institute"
-    )
-    keyboard.add(button_name)
-    keyboard.add(button_language)
-    keyboard.add(button_interests)
-    keyboard.add(button_course)
-    keyboard.add(button_institute)
     bot.send_message(
         message.chat.id,
-        "✏️ Что ты хочешь изменить?",
-        reply_markup=keyboard
+        text,
+        parse_mode="HTML",
+        reply_markup=main_menu_keyboard()
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("edit_"))
-def edit_callback(call):
-    bot.answer_callback_query(call.id)
-    if call.data == "edit_name":
-        bot.send_message(
-            call.message.chat.id,
-            "Напиши новое имя:"
-        )
-        bot.register_next_step_handler(call.message, change_name)
-    elif call.data == "edit_language":
-        bot.send_message(
-            call.message.chat.id,
-            "Напиши новый язык программирования:"
-        )
-        bot.register_next_step_handler(call.message, change_language)
-    elif call.data == "edit_interests":
-        bot.send_message(
-            call.message.chat.id,
-            "Напиши свои новые интересы:"
-        )
-        bot.register_next_step_handler(call.message, change_interests)
-    elif call.data == "edit_course":
-        bot.send_message(
-            call.message.chat.id,
-            "Напиши свой курс:"
-        )
-        bot.register_next_step_handler(call.message, change_course)
-    elif call.data == "edit_institute":
-        bot.send_message(
-            call.message.chat.id,
-            "Напиши свой институт:"
-        )
-        bot.register_next_step_handler(call.message, change_institute)
-
-def change_name(message):
-    user_id = message.from_user.id
-    new_name = message.text
-    update_name(user_id, new_name)
-    bot.send_message(
-        message.chat.id,
-        f"✅ Имя изменено на: {new_name}"
-    )
-
-def change_language(message):
-    user_id = message.from_user.id
-    new_language = message.text
-    update_language(user_id, new_language)
-    bot.send_message(
-        message.chat.id,
-        f"✅ Язык программирования изменён на: {new_language}"
-    )
-
-def change_interests(message):
-    user_id = message.from_user.id
-    new_interests = message.text
-    update_interests(user_id, new_interests)
-    bot.send_message(
-        message.chat.id,
-        f"✅ Интересы изменены на: {new_interests}"
-    )
-
-def change_course(message):
-    user_id = message.from_user.id
-    new_course = message.text
-    update_course(user_id, new_course)
-    bot.send_message(
-        message.chat.id,
-        f"✅ Курс изменён на: {new_course}"
-    )
-
-def change_institute(message):
-    user_id = message.from_user.id
-    new_institute = message.text
-    update_institute(user_id, new_institute)
-    bot.send_message(
-        message.chat.id,
-        f"✅ Институт изменён на: {new_institute}"
-    )
 
 bot.infinity_polling()
+
