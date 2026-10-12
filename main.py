@@ -15,7 +15,7 @@ from database import (
     update_free_time,
     update_about
 )
-bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8'")
+bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8")
 
 create_database()
 
@@ -36,8 +36,12 @@ def main_menu_keyboard():
     keyboard = types.ReplyKeyboardMarkup(
         resize_keyboard=True
     )
+    keyboard.row(
+        types.KeyboardButton("👤 Моя анкета"),
+        types.KeyboardButton("✏️ Изменить анкету")
+    )
     keyboard.add(
-        types.KeyboardButton("👤 Моя анкета")
+        types.KeyboardButton("🗑 Удалить анкету")
     )
     return keyboard
 
@@ -273,5 +277,285 @@ def show_profile(message):
     )
 
 
-bot.infinity_polling()
+@bot.message_handler(
+    func=lambda message:
+    message.text == "✏️ Изменить анкету"
+)
+def edit_button(message):
+    if get_profile(message.from_user.id) is None:
+        bot.send_message(
+            message.chat.id,
+            "Сначала создай анкету через /start."
+        )
+        return
 
+    edit_profile(message)
+
+
+@bot.message_handler(commands=["edit"])
+def edit_profile(message):
+    keyboard = types.InlineKeyboardMarkup()
+
+    buttons = [
+        ("👤 Имя", "edit_name"),
+        ("🛠 Навыки", "edit_skills"),
+        ("🎯 Интересы", "edit_interests"),
+        ("🎓 Курс", "edit_course"),
+        ("🏫 Институт", "edit_institute"),
+        ("👥 Роль в команде", "edit_role"),
+        ("🚀 Цель поиска команды", "edit_goal"),
+        ("⏰ Свободное время", "edit_free_time"),
+        ("📝 О себе", "edit_about")
+    ]
+
+    for button_text, callback in buttons:
+        keyboard.add(
+            types.InlineKeyboardButton(
+                button_text,
+                callback_data=callback
+            )
+        )
+
+    bot.send_message(
+        message.chat.id,
+        "✏️ Что ты хочешь изменить?",
+        reply_markup=keyboard
+    )
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("edit_")
+)
+def edit_callback(call):
+    bot.answer_callback_query(call.id)
+
+    fields = {
+        "edit_name": (
+            "Напиши новое имя:",
+            change_name
+        ),
+        "edit_skills": (
+            "Напиши новые навыки:",
+            change_skills
+        ),
+        "edit_interests": (
+            "Напиши свои новые интересы:",
+            change_interests
+        ),
+        "edit_course": (
+            "Напиши свой курс:",
+            change_course
+        ),
+        "edit_institute": (
+            "Напиши свой институт:",
+            change_institute
+        ),
+        "edit_role": (
+            "Напиши новую роль в команде:",
+            change_role
+        ),
+        "edit_goal": (
+            "Напиши новую цель поиска команды:",
+            change_goal
+        ),
+        "edit_free_time": (
+            "Напиши, сколько времени готов(а) уделять проекту:",
+            change_free_time
+        ),
+        "edit_about": (
+            "Напиши новую информацию о себе:",
+            change_about
+        )
+    }
+
+    field = fields.get(call.data)
+
+    if field:
+        prompt, handler = field
+
+        sent = bot.send_message(
+            call.message.chat.id,
+            prompt,
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        bot.register_next_step_handler(sent, handler)
+
+
+def change_name(message):
+    new_value = message.text
+    update_name(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Имя изменено на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_skills(message):
+    new_value = message.text
+    update_skills(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Навыки изменены: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_interests(message):
+    new_value = message.text
+    update_interests(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Интересы изменены на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_course(message):
+    new_value = message.text
+    update_course(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Курс изменён на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_institute(message):
+    new_value = message.text
+    update_institute(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Институт изменён на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_role(message):
+    new_value = message.text
+    update_role(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Роль в команде изменена на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_goal(message):
+    new_value = message.text
+    update_goal(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Цель поиска команды изменена на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_free_time(message):
+    new_value = message.text
+    update_free_time(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Свободное время изменено на: {new_value}",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+def change_about(message):
+    new_value = message.text
+    update_about(message.from_user.id, new_value)
+
+    bot.send_message(
+        message.chat.id,
+        "✅ Информация о себе обновлена.",
+        reply_markup=main_menu_keyboard()
+    )
+
+
+@bot.message_handler(
+    func=lambda message:
+    message.text == "🗑 Удалить анкету"
+)
+def delete_profile_button(message):
+    if get_profile(message.from_user.id) is None:
+        bot.send_message(
+            message.chat.id,
+            "У тебя нет анкеты для удаления.",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "✅ Да, удалить",
+            callback_data="confirm_delete"
+        ),
+        types.InlineKeyboardButton(
+            "❌ Отмена",
+            callback_data="cancel_delete"
+        )
+    )
+
+    bot.send_message(
+        message.chat.id,
+        "⚠️ <b>Удалить анкету?</b>\n\n"
+        "Все данные анкеты будут удалены. "
+        "Это действие нельзя отменить.",
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data in [
+        "confirm_delete",
+        "cancel_delete"
+    ]
+)
+def delete_profile_callback(call):
+    bot.answer_callback_query(call.id)
+
+    if call.data == "cancel_delete":
+        bot.send_message(
+            call.message.chat.id,
+            "Удаление отменено. Твоя анкета сохранена.",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    user_id = call.from_user.id
+
+    import sqlite3
+
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "DELETE FROM profiles WHERE user_id = ?",
+        (user_id,)
+    )
+
+    connection.commit()
+    connection.close()
+
+    user_data.pop(user_id, None)
+
+    bot.send_message(
+        call.message.chat.id,
+        "🗑 Анкета удалена.\n\n"
+        "Если захочешь вернуться, создай новую анкету!",
+        reply_markup=registration_keyboard()
+    )
+
+
+bot.infinity_polling()

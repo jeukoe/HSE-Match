@@ -139,4 +139,3 @@ def update_field(user_id, field, value):
 
     connection.commit()
     connection.close()
-
