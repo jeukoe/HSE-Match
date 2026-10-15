@@ -292,29 +292,24 @@ def edit_button(message):
     edit_profile(message)
 
 
+
 @bot.message_handler(commands=["edit"])
 def edit_profile(message):
-    keyboard = types.InlineKeyboardMarkup()
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
 
     buttons = [
-        ("👤 Имя", "edit_name"),
-        ("🛠 Навыки", "edit_skills"),
-        ("🎯 Интересы", "edit_interests"),
-        ("🎓 Курс", "edit_course"),
-        ("🏫 Институт", "edit_institute"),
-        ("👥 Роль в команде", "edit_role"),
-        ("🚀 Цель поиска команды", "edit_goal"),
-        ("⏰ Свободное время", "edit_free_time"),
-        ("📝 О себе", "edit_about")
+        types.InlineKeyboardButton("👤 Имя", callback_data="edit_name"),
+        types.InlineKeyboardButton("🛠 Навыки", callback_data="edit_skills"),
+        types.InlineKeyboardButton("🎯 Интересы", callback_data="edit_interests"),
+        types.InlineKeyboardButton("🎓 Курс", callback_data="edit_course"),
+        types.InlineKeyboardButton("🏫 Институт", callback_data="edit_institute"),
+        types.InlineKeyboardButton("👥 Роль в команде", callback_data="edit_role"),
+        types.InlineKeyboardButton("🚀 Цель поиска команды", callback_data="edit_goal"),
+        types.InlineKeyboardButton("⏰ Свободное время", callback_data="edit_free_time"),
+        types.InlineKeyboardButton("📝 О себе", callback_data="edit_about")
     ]
 
-    for button_text, callback in buttons:
-        keyboard.add(
-            types.InlineKeyboardButton(
-                button_text,
-                callback_data=callback
-            )
-        )
+    keyboard.add(*buttons)
 
     bot.send_message(
         message.chat.id,
