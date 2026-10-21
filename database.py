@@ -1,3 +1,4 @@
+import re
 import sqlite3
 
 
@@ -139,3 +140,110 @@ def update_field(user_id, field, value):
 
     connection.commit()
     connection.close()
+
+
+# ---------------------------------------------------------------------------
+# Поиск участников и фильтрация
+# ---------------------------------------------------------------------------
+
+# Поля, по которым можно искать. "all" - сразу по всем текстовым полям.
+SEARCH_FIELDS = {
+    "skills": ("skills",),
+    "interests": ("interests",),
+    "role": ("role",),
+    "goal": ("goal",),
+    "all": ("skills", "interests", "role", "goal", "course", "about"),
+}
+
+_PROFILE_COLUMNS = (
+    "user_id", "name", "interests", "course", "institute",
+    "skills", "role", "goal", "free_time", "about"
+)
+
+
+def split_terms(text):
+    """'Python, C++; дизайн' -> ['python', 'c++', 'дизайн'] (в нижнем регистре)."""
+    if not text:
+        return []
+    parts = re.split(r"[,;\n]+", text)
+    terms = []
+    for part in parts:
+        part = part.strip().casefold()
+        if part and part not in terms:
+            terms.append(part)
+    return terms
+
+
+def _term_in_text(term, text):
+    # Совпадение с начала слова: "pyth" найдёт "Python", но "ython" - нет.
+    pattern = r"(?<!\w)" + re.escape(term)
+    return re.search(pattern, text) is not None
+
+
+def search_profiles(exclude_user_id, query="", search_field="all"):
+    """
+    Ищет участников, кроме exclude_user_id.
+    query - термины через запятую. Пустой query = вернуть всех.
+    Сортировка: сначала те, у кого больше совпавших терминов.
+    Возвращает список словарей (ключи из _PROFILE_COLUMNS + matched, total).
+    """
+    if search_field not in SEARCH_FIELDS:
+        raise ValueError("Неизвестное поле поиска")
+
+    terms = split_terms(query)
+
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute(
+        f"SELECT {', '.join(_PROFILE_COLUMNS)} FROM profiles "
+        "WHERE user_id != ?",
+        (exclude_user_id,)
+    )
+    rows = cursor.fetchall()
+    connection.close()
+
+    results = []
+    for row in rows:
+        profile = dict(zip(_PROFILE_COLUMNS, row))
+
+        # Фильтрацию делаем в Python: SQLite LOWER()/LIKE не умеет
+        # регистронезависимо работать с кириллицей.
+        haystack = " ".join(
+            (profile[f] or "") for f in SEARCH_FIELDS[search_field]
+        ).casefold()
+
+        matched = [t for t in terms if _term_in_text(t, haystack)]
+
+        if terms and not matched:
+            continue
+
+        profile["matched"] = len(matched)
+        profile["total"] = len(terms)
+        results.append(profile)
+
+    results.sort(key=lambda p: (-p["matched"], (p["name"] or "").casefold()))
+    return results
+
+
+def get_popular_values(field, limit=8, exclude_user_id=None):
+    """Самые частые значения поля (навыки, интересы...) - для подсказок."""
+    if field not in ("skills", "interests", "role", "goal"):
+        raise ValueError("Неизвестное поле")
+
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute(f"SELECT user_id, {field} FROM profiles")
+    rows = cursor.fetchall()
+    connection.close()
+
+    counts = {}
+    shown = {}
+    for user_id, value in rows:
+        if exclude_user_id is not None and user_id == exclude_user_id:
+            continue
+        for term in split_terms(value):
+            counts[term] = counts.get(term, 0) + 1
+            shown.setdefault(term, term)
+
+    top = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:limit]
+    return [(shown[t], n) for t, n in top]
