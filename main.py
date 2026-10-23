@@ -24,6 +24,7 @@ from database import (
     create_contact_request,
     get_contact_request,
     update_contact_request,
+    get_accepted_contact_partners
 )
 
 bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8")
@@ -63,6 +64,10 @@ def main_menu_keyboard():
 @bot.message_handler(commands=["start"])
 def start(message):
     user_id = message.from_user.id
+    save_telegram_username(
+        user_id,
+        message.from_user.username
+    )
 
     if get_profile(user_id) is not None:
         bot.send_message(
@@ -568,7 +573,8 @@ def format_result(profile, position, total):
         f"⏰ <b>Время:</b> {esc(profile['free_time'])}\n"
         f"🎓 {esc(profile['course'])} курс, {esc(profile['institute'])}\n\n"
         f"📝 {esc(profile['about'])}\n\n"
-        f'✉️ <a href="tg://user?id={profile["user_id"]}">Написать участнику</a>'
+        "🤝 Чтобы связаться, отправь запрос на контакт "
+        "и дождись согласия участника."
     )
 
 
@@ -594,7 +600,12 @@ def result_keyboard(position, total):
             )
         )
     keyboard.row(*nav)
-
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "🤝 Запросить контакт",
+            callback_data=f"contact_request_{position}"
+        )
+    )
     keyboard.add(
         types.InlineKeyboardButton(
             "🔁 Новый поиск", callback_data="search_menu"
@@ -863,5 +874,263 @@ def delete_profile_callback(call):
         reply_markup=registration_keyboard()
     )
 
+#Связь между участниками с согласия обеих сторон
+def contact_decision_keyboard(requester_id):
+    keyboard = types.InlineKeyboardMarkup()
 
+    keyboard.row(
+        types.InlineKeyboardButton(
+            "✅ Принять",
+            callback_data=f"contact_accept_{requester_id}"
+        ),
+        types.InlineKeyboardButton(
+            "❌ Отклонить",
+            callback_data=f"contact_reject_{requester_id}"
+        )
+    )
+
+    return keyboard
+
+
+def contact_share_keyboard():
+    keyboard = types.ReplyKeyboardMarkup(
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    keyboard.add(
+        types.KeyboardButton(
+            "📱 Поделиться контактом",
+            request_contact=True
+        )
+    )
+
+    return keyboard
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("contact_request_")
+)
+def request_contact_callback(call):
+    bot.answer_callback_query(call.id)
+
+    requester_id = call.from_user.id
+
+    try:
+        position = int(call.data.rsplit("_", 1)[1])
+    except ValueError:
+        return
+
+    state = search_state.get(requester_id)
+
+    if state is None:
+        bot.send_message(
+            call.message.chat.id,
+            "Результаты поиска устарели. Запусти поиск заново."
+        )
+        return
+
+    results = state["results"]
+
+    if not 0 <= position < len(results):
+        return
+
+    target_id = results[position]["user_id"]
+
+    if requester_id == target_id:
+        return
+
+    if get_profile(target_id) is None:
+        bot.send_message(
+            call.message.chat.id,
+            "Эта анкета больше недоступна."
+        )
+        return
+
+    created = create_contact_request(requester_id, target_id)
+
+    if not created:
+        bot.send_message(
+            call.message.chat.id,
+            "Запрос уже отправлен или контакт уже согласован."
+        )
+        return
+
+    try:
+        bot.send_message(
+            target_id,
+            "🤝 <b>Запрос на связь в TeamUp</b>\n\n"
+            "Другой участник хочет связаться с тобой.\n"
+            "Разрешить обмен контактами?",
+            parse_mode="HTML",
+            reply_markup=contact_decision_keyboard(requester_id)
+        )
+    except telebot.apihelper.ApiTelegramException:
+        update_contact_request(
+            requester_id, target_id, "rejected"
+        )
+        bot.send_message(
+            call.message.chat.id,
+            "Не удалось доставить запрос. "
+            "Возможно, участник ещё не запускал бота."
+        )
+        return
+
+    bot.send_message(
+        call.message.chat.id,
+        "✅ Запрос отправлен! Дождись ответа участника."
+    )
+
+
+@bot.callback_query_handler(
+    func=lambda call: (
+        call.data.startswith("contact_accept_")
+        or call.data.startswith("contact_reject_")
+    )
+)
+def contact_decision_callback(call):
+    action, requester_text = call.data.rsplit("_", 1)
+
+    try:
+        requester_id = int(requester_text)
+    except ValueError:
+        bot.answer_callback_query(call.id)
+        return
+
+    target_id = call.from_user.id
+
+    status = get_contact_request(requester_id, target_id)
+
+    if status != "pending":
+        bot.answer_callback_query(
+            call.id,
+            "Этот запрос уже обработан."
+        )
+        return
+
+    if action == "contact_accept":
+        updated = update_contact_request(
+            requester_id, target_id, "accepted"
+        )
+    else:
+        updated = update_contact_request(
+            requester_id, target_id, "rejected"
+        )
+
+    if not updated:
+        bot.answer_callback_query(
+            call.id,
+            "Этот запрос уже обработан."
+        )
+        return
+
+    bot.answer_callback_query(call.id)
+
+    try:
+        bot.edit_message_reply_markup(
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=None
+        )
+    except telebot.apihelper.ApiTelegramException:
+        pass
+
+    if action == "contact_reject":
+        bot.send_message(
+            target_id,
+            "Ты отклонил(а) запрос на связь."
+        )
+        bot.send_message(
+            requester_id,
+            "Участник пока не согласился на связь."
+        )
+        return
+
+    bot.send_message(
+        target_id,
+        "✅ Ты согласился(ась) на связь!"
+    )
+    bot.send_message(
+        requester_id,
+        "🎉 Участник согласился на связь!"
+    )
+
+    requester_username = get_telegram_username(requester_id)
+    target_username = get_telegram_username(target_id)
+
+    if requester_username:
+        requester_contact = "@" + requester_username
+    else:
+        requester_contact = None
+
+    if target_username:
+        target_contact = "@" + target_username
+    else:
+        target_contact = None
+
+    if requester_contact and target_contact:
+        bot.send_message(
+            requester_id,
+            f"Контакт участника: {target_contact}"
+        )
+        bot.send_message(
+            target_id,
+            f"Контакт участника: {requester_contact}"
+        )
+    else:
+        bot.send_message(
+            requester_id,
+            "У одного из участников не указан username.\n"
+            "Если хотите поделиться номером телефона, "
+            "используйте кнопку ниже.",
+            reply_markup=contact_share_keyboard()
+        )
+        bot.send_message(
+            target_id,
+            "У одного из участников не указан username.\n"
+            "Если хотите поделиться номером телефона, "
+            "используйте кнопку ниже.",
+            reply_markup=contact_share_keyboard()
+        )
+@bot.message_handler(content_types=["contact"])
+def receive_shared_contact(message):
+    contact = message.contact
+    user_id = message.from_user.id
+
+    # Пользователь может поделиться только собственным контактом.
+    if contact.user_id != user_id:
+        bot.send_message(
+            message.chat.id,
+            "Пожалуйста, отправь именно свой контакт "
+            "через кнопку Telegram."
+        )
+        return
+
+    partners = get_accepted_contact_partners(user_id)
+
+    if not partners:
+        bot.send_message(
+            message.chat.id,
+            "Нет участников, с которыми согласован обмен контактами."
+        )
+        return
+
+    delivered = 0
+
+    for partner_id in partners:
+        try:
+            bot.send_contact(
+                partner_id,
+                contact.phone_number,
+                contact.first_name,
+                last_name=contact.last_name or ""
+            )
+            delivered += 1
+        except telebot.apihelper.ApiTelegramException:
+            continue
+
+    bot.send_message(
+        message.chat.id,
+        f"Контакт отправлен участникам: {delivered}."
+    )
 bot.infinity_polling()
