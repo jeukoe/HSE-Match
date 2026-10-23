@@ -326,6 +326,53 @@ def edit_profile(message):
         reply_markup=keyboard
     )
 
+def validate_edit_input(message, handler):
+    user_id = message.from_user.id
+
+    if message.text and message.text.strip() == "/cancel":
+        cancel(message)
+        return
+
+    if (
+        not message.text
+        or not message.text.strip()
+        or message.text.startswith("/")
+    ):
+        sent = bot.send_message(
+            message.chat.id,
+            "⚠️ Это не подходит в качестве ответа.\n"
+            "Отправь обычный текст или напиши /cancel "
+            "для отмены."
+        )
+        bot.register_next_step_handler(
+            sent,
+            validate_edit_input,
+            handler
+        )
+        return
+
+    menu_buttons = {
+        "👤 Моя анкета",
+        "✏️ Изменить анкету",
+        "🔍 Найти участников",
+        "🗑 Удалить анкету",
+        "📝 Зарегистрироваться"
+    }
+
+    if message.text.strip() in menu_buttons:
+        sent = bot.send_message(
+            message.chat.id,
+            "⚠️ Сначала введи значение поля анкеты.\n"
+            "Или напиши /cancel для отмены."
+        )
+        bot.register_next_step_handler(
+            sent,
+            validate_edit_input,
+            handler
+        )
+        return
+
+    handler(message)
 
 @bot.callback_query_handler(
     func=lambda call: call.data.startswith("edit_")
@@ -335,39 +382,39 @@ def edit_callback(call):
 
     fields = {
         "edit_name": (
-            "Напиши новое имя:",
+            "Напиши новое имя или /cancel для отмены:",
             change_name
         ),
         "edit_skills": (
-            "Напиши новые навыки:",
+            "Напиши новые навыки или /cancel для отмены:",
             change_skills
         ),
         "edit_interests": (
-            "Напиши свои новые интересы:",
+            "Напиши свои новые интересы или /cancel для отмены:",
             change_interests
         ),
         "edit_course": (
-            "Напиши свой курс:",
+            "Напиши свой курс или /cancel для отмены:",
             change_course
         ),
         "edit_institute": (
-            "Напиши свой институт:",
+            "Напиши свой институт или /cancel для отмены:",
             change_institute
         ),
         "edit_role": (
-            "Напиши новую роль в команде:",
+            "Напиши новую роль в команде или /cancel для отмены:",
             change_role
         ),
         "edit_goal": (
-            "Напиши новую цель поиска команды:",
+            "Напиши новую цель поиска команды или /cancel для отмены:",
             change_goal
         ),
         "edit_free_time": (
-            "Напиши, сколько времени готов(а) уделять проекту:",
+            "Напиши, сколько времени готов(а) уделять проекту или /cancel для отмены:",
             change_free_time
         ),
         "edit_about": (
-            "Напиши новую информацию о себе:",
+            "Напиши новую информацию о себе или /cancel для отмены:",
             change_about
         )
     }
@@ -382,7 +429,11 @@ def edit_callback(call):
             prompt,
             reply_markup=types.ReplyKeyboardRemove()
         )
-        bot.register_next_step_handler(sent, handler)
+        bot.register_next_step_handler(
+            sent,
+            validate_edit_input,
+            handler
+        )
 
 
 def change_name(message):
