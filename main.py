@@ -19,6 +19,11 @@ from database import (
     update_about,
     search_profiles,
     get_popular_values
+    save_telegram_username,
+    get_telegram_username,
+    create_contact_request,
+    get_contact_request,
+    update_contact_request,
 )
 
 bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8")
