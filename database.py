@@ -20,6 +20,15 @@ def create_database():
             about TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user_id INTEGER NOT NULL,
+            to_user_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     cursor.execute("PRAGMA table_info(profiles)")
     columns = [row[1] for row in cursor.fetchall()]
@@ -40,7 +49,22 @@ def create_database():
             cursor.execute(
                 f"ALTER TABLE profiles ADD COLUMN {column} {column_type}"
             )
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS contact_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requester_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            UNIQUE(requester_id, target_id)
+        )
+    """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS telegram_usernames (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT
+        )
+    """)
     connection.commit()
     connection.close()
 
@@ -84,6 +108,12 @@ def get_profile(user_id):
 
     return profile
 
+def delete_profile(user_id):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM profiles WHERE user_id = ?", (user_id,))
+    connection.commit()
+    connection.close()
 
 def update_name(user_id, new_name):
     update_field(user_id, "name", new_name)
@@ -141,6 +171,86 @@ def update_field(user_id, field, value):
     connection.commit()
     connection.close()
 
+
+    
+    
+def get_candidates(user_id):
+    """user_id всех, у кого есть анкета и нет pending-приглашения от user_id."""
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT p.user_id
+        FROM profiles p
+        WHERE p.user_id != ?
+          AND p.user_id NOT IN (
+              SELECT to_user_id FROM invitations
+              WHERE from_user_id = ? AND status = 'pending'
+          )
+    """, (user_id, user_id))
+    result = [row[0] for row in cursor.fetchall()]
+    connection.close()
+    return result
+
+
+def create_invitation(from_user_id, to_user_id):
+    """
+    Создаёт приглашение со статусом 'pending'.
+    Возвращает id приглашения или None, если pending уже есть.
+    """
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT id FROM invitations
+        WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending'
+    """, (from_user_id, to_user_id))
+    if cursor.fetchone() is not None:
+        connection.close()
+        return None
+    cursor.execute("""
+        INSERT INTO invitations (from_user_id, to_user_id, status)
+        VALUES (?, ?, 'pending')
+    """, (from_user_id, to_user_id))
+    invitation_id = cursor.lastrowid
+    connection.commit()
+    connection.close()
+    return invitation_id
+
+
+def get_invitation(invitation_id):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT from_user_id, to_user_id, status
+        FROM invitations WHERE id = ?
+    """, (invitation_id,))
+    invitation = cursor.fetchone()
+    connection.close()
+    return invitation
+
+
+def update_invitation_status(invitation_id, status):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE invitations SET status = ? WHERE id = ?",
+        (status, invitation_id)
+    )
+    connection.commit()
+    connection.close()
+
+
+def get_pending_invitations_for(to_user_id):
+    """Список (invitation_id, from_user_id) входящих pending-приглашений."""
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT id, from_user_id FROM invitations
+        WHERE to_user_id = ? AND status = 'pending'
+        ORDER BY id DESC
+    """, (to_user_id,))
+    result = cursor.fetchall()
+    connection.close()
+    return result
 
 # ---------------------------------------------------------------------------
 # Поиск участников и фильтрация
@@ -247,3 +357,124 @@ def get_popular_values(field, limit=8, exclude_user_id=None):
 
     top = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:limit]
     return [(shown[t], n) for t, n in top]
+def save_telegram_username(user_id, username):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        INSERT INTO telegram_usernames (user_id, username)
+        VALUES (?, ?)
+        ON CONFLICT(user_id)
+        DO UPDATE SET username = excluded.username
+    """, (user_id, username))
+
+    connection.commit()
+    connection.close()
+
+
+def get_telegram_username(user_id):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "SELECT username FROM telegram_usernames WHERE user_id = ?",
+        (user_id,)
+    )
+
+    result = cursor.fetchone()
+    connection.close()
+
+    return result[0] if result else None
+
+
+def create_contact_request(requester_id, target_id):
+    if requester_id == target_id:
+        return False
+
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT status FROM contact_requests
+        WHERE requester_id = ? AND target_id = ?
+    """, (requester_id, target_id))
+
+    existing = cursor.fetchone()
+
+    if existing and existing[0] in ("pending", "accepted"):
+        connection.close()
+        return False
+
+    cursor.execute("""
+        INSERT INTO contact_requests
+            (requester_id, target_id, status)
+        VALUES (?, ?, 'pending')
+        ON CONFLICT(requester_id, target_id)
+        DO UPDATE SET status = 'pending'
+    """, (requester_id, target_id))
+
+    connection.commit()
+    connection.close()
+    return True
+
+
+def get_contact_request(requester_id, target_id):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT status FROM contact_requests
+        WHERE requester_id = ? AND target_id = ?
+    """, (requester_id, target_id))
+
+    result = cursor.fetchone()
+    connection.close()
+
+    return result[0] if result else None
+
+
+def update_contact_request(requester_id, target_id, status):
+    if status not in ("accepted", "rejected"):
+        raise ValueError("Недопустимый статус запроса")
+
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        UPDATE contact_requests
+        SET status = ?
+        WHERE requester_id = ?
+          AND target_id = ?
+          AND status = 'pending'
+    """, (status, requester_id, target_id))
+
+    updated = cursor.rowcount > 0
+
+    connection.commit()
+    connection.close()
+
+    return updated
+def get_accepted_contact_partners(user_id):
+    connection = sqlite3.connect("profiles.db")
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT requester_id, target_id
+        FROM contact_requests
+        WHERE status = 'accepted'
+          AND (requester_id = ? OR target_id = ?)
+    """, (user_id, user_id))
+
+    rows = cursor.fetchall()
+    connection.close()
+
+    partners = []
+
+    for requester_id, target_id in rows:
+        partner_id = (
+            target_id if requester_id == user_id
+            else requester_id
+        )
+        partners.append(partner_id)
+
+    return partners
