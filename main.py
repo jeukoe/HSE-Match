@@ -441,7 +441,57 @@ def edit_profile(message):
         reply_markup=keyboard
     )
 
+def validate_edit_input(message, handler):
+    user_id = message.from_user.id
 
+    if message.text and message.text.strip() == "/cancel":
+        cancel(message)
+        return
+
+    if (
+        not message.text
+        or not message.text.strip()
+        or message.text.startswith("/")
+    ):
+        sent = bot.send_message(
+            message.chat.id,
+            "⚠️ Это не подходит в качестве ответа.\n"
+            "Отправь обычный текст или напиши /cancel "
+            "для отмены."
+        )
+        bot.register_next_step_handler(
+            sent,
+            validate_edit_input,
+            handler
+        )
+        return
+
+    menu_buttons = {
+        "👤 Моя анкета",
+        "✏️ Изменить анкету",
+        "🔍 Найти участников",
+        "🗑 Удалить анкету",
+        "📝 Зарегистрироваться"
+    }
+
+    if message.text.strip() in menu_buttons:
+        sent = bot.send_message(
+            message.chat.id,
+            "⚠️ Сначала введи значение поля анкеты.\n"
+            "Или напиши /cancel для отмены."
+        )
+        bot.register_next_step_handler(
+            sent,
+            validate_edit_input,
+            handler
+        )
+        return
+
+    handler(message)
+
+@bot.callback_query_handler(
+    func=lambda c: c.data and c.data in EDIT_FIELDS
+)
 @bot.callback_query_handler(
     func=lambda c: c.data and c.data in EDIT_FIELDS
 )
@@ -459,16 +509,16 @@ def edit_callback(call):
 
     sent = bot.send_message(
         call.message.chat.id,
-        prompt,
+        prompt + "\n\nИли /cancel для отмены.",
         reply_markup=types.ReplyKeyboardRemove()
     )
     bot.register_next_step_handler(
-        sent, make_change_handler(update_fn, template)
+        sent,
+        validate_edit_input,
+        make_change_handler(update_fn, template)
     )
 
-
 def make_change_handler(update_fn, template):
-    @require_text
     def handler(message):
         value = message.text.strip()
         update_fn(message.from_user.id, value)
@@ -1132,7 +1182,7 @@ def show_invitations(message):
     
     
     
-     for invitation_id, from_user_id in pending:
+    for invitation_id, from_user_id in pending:
         from_profile = get_profile(from_user_id)
         if from_profile is None:
             continue
