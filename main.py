@@ -24,6 +24,8 @@ from database import (
     update_invitation_status,
     get_pending_invitations_for,
     delete_profile,
+    search_profiles,
+    get_popular_values,
 )
 
 load_dotenv()
@@ -32,6 +34,8 @@ if not BOT_TOKEN:
     raise RuntimeError("Переменная окружения BOT_TOKEN не задана")
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+bot = telebot.TeleBot("8828680279:AAEsEpHy81gpuHXlFz6Pzwe0rmV7-6sU1E8")
 
 create_database()
 
@@ -112,6 +116,7 @@ def main_menu_keyboard():
         types.KeyboardButton("👀 Смотреть анкеты"),
         types.KeyboardButton("📬 Мои приглашения")
     )
+    keyboard.add(types.KeyboardButton("🔍 Найти участников"))
     keyboard.add(types.KeyboardButton("🗑 Удалить анкету"))
     return keyboard
 
@@ -624,6 +629,286 @@ def next_profile(call):
     show_candidate(call.message.chat.id, user_id)
 
 
+# ---------------------------------------------------------------------------
+# Поиск участников и фильтрация
+# Все callback_data этого блока начинаются с "search_", чтобы не пересекаться
+# с "edit_", "confirm_delete" и "cancel_delete".
+# ---------------------------------------------------------------------------
+
+SEARCH_BUTTON = "🔍 Найти участников"
+
+# Тексты кнопок меню: если пользователь нажал их вместо ввода запроса,
+# поиск отменяется, а не сохраняет текст кнопки как запрос.
+MENU_BUTTONS = {
+    "📝 Зарегистрироваться",
+    "👤 Моя анкета",
+    "✏️ Изменить анкету",
+    "🗑 Удалить анкету",
+    SEARCH_BUTTON
+}
+
+SEARCH_MODES = {
+    "search_by_skills": ("skills", "🛠 навыкам", "Python, дизайн"),
+    "search_by_interests": ("interests", "🎯 направлениям/интересам", "AI, веб-разработка"),
+    "search_by_role": ("role", "👥 роли в команде", "разработчик"),
+    "search_by_goal": ("goal", "🚀 цели", "хакатон"),
+    "search_by_all": ("all", "🔎 всем полям сразу", "Python, хакатон"),
+}
+
+# user_id -> {"results": [...], "field": str, "query": str}
+search_state = {}
+
+
+def search_menu_keyboard():
+    keyboard = types.InlineKeyboardMarkup()
+
+    for callback, (_, title, _) in SEARCH_MODES.items():
+        keyboard.add(
+            types.InlineKeyboardButton(
+                f"Искать по {title}",
+                callback_data=callback
+            )
+        )
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "👥 Показать всех участников",
+            callback_data="search_everyone"
+        )
+    )
+    return keyboard
+
+
+def short(text, limit=300):
+    text = text or ""
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def esc(text, default="—"):
+    # Текст пользователей вставляется в HTML-сообщение, поэтому экранируем.
+    return html.escape(short(text)) if text else default
+
+
+def format_result(profile, position, total):
+    match_line = ""
+    if profile["total"]:
+        match_line = (
+            f"✅ Совпадений: {profile['matched']} из {profile['total']}\n\n"
+        )
+
+    return (
+        f"🔍 <b>Результат {position + 1} из {total}</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 <b>{esc(profile['name'])}</b>\n"
+        f"{match_line}"
+        f"🛠 <b>Навыки:</b> {esc(profile['skills'])}\n"
+        f"🎯 <b>Интересы:</b> {esc(profile['interests'])}\n"
+        f"👥 <b>Роль:</b> {esc(profile['role'])}\n"
+        f"🚀 <b>Цель:</b> {esc(profile['goal'])}\n"
+        f"⏰ <b>Время:</b> {esc(profile['free_time'])}\n"
+        f"🎓 {esc(profile['course'])} курс, {esc(profile['institute'])}\n\n"
+        f"📝 {esc(profile['about'])}\n\n"
+        f'✉️ <a href="tg://user?id={profile["user_id"]}">Написать участнику</a>'
+    )
+
+
+def result_keyboard(position, total):
+    keyboard = types.InlineKeyboardMarkup()
+
+    nav = []
+    if position > 0:
+        nav.append(
+            types.InlineKeyboardButton(
+                "◀️ Назад", callback_data=f"search_page_{position - 1}"
+            )
+        )
+    nav.append(
+        types.InlineKeyboardButton(
+            f"{position + 1}/{total}", callback_data="search_noop"
+        )
+    )
+    if position < total - 1:
+        nav.append(
+            types.InlineKeyboardButton(
+                "Вперёд ▶️", callback_data=f"search_page_{position + 1}"
+            )
+        )
+    keyboard.row(*nav)
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "🔁 Новый поиск", callback_data="search_menu"
+        )
+    )
+    return keyboard
+
+
+def require_profile(message):
+    """Поиск доступен только тем, у кого есть анкета."""
+    if get_profile(message.from_user.id) is None:
+        bot.send_message(
+            message.chat.id,
+            "📝 Чтобы искать участников, сначала создай свою анкету.",
+            reply_markup=registration_keyboard()
+        )
+        return False
+    return True
+
+
+@bot.message_handler(commands=["search"])
+@bot.message_handler(func=lambda message: message.text == SEARCH_BUTTON)
+def search_menu(message):
+    # Если пользователь был посреди другого ввода - сбрасываем его.
+    bot.clear_step_handler_by_chat_id(message.chat.id)
+    user_data.pop(message.from_user.id, None)
+
+    if not require_profile(message):
+        return
+
+    bot.send_message(
+        message.chat.id,
+        "🔍 <b>Поиск участников</b>\n\nВыбери, как искать:",
+        parse_mode="HTML",
+        reply_markup=search_menu_keyboard()
+    )
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("search_")
+)
+def search_callback(call):
+    bot.answer_callback_query(call.id)
+    data = call.data
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+
+    if data == "search_noop":
+        return
+
+    if data == "search_menu":
+        bot.send_message(
+            chat_id,
+            "🔍 <b>Поиск участников</b>\n\nВыбери, как искать:",
+            parse_mode="HTML",
+            reply_markup=search_menu_keyboard()
+        )
+        return
+
+    if get_profile(user_id) is None:
+        bot.send_message(
+            chat_id,
+            "📝 Сначала создай свою анкету.",
+            reply_markup=registration_keyboard()
+        )
+        return
+
+    if data == "search_everyone":
+        run_search(chat_id, user_id, "all", "")
+        return
+
+    if data in SEARCH_MODES:
+        field, title, example = SEARCH_MODES[data]
+
+        text = (
+            f"Введи, что искать по {title}.\n"
+            f"Можно несколько значений через запятую, "
+            f"например: {example}"
+        )
+
+        if field != "all":
+            popular = get_popular_values(field, exclude_user_id=user_id)
+            if popular:
+                text += "\n\n📊 Популярное сейчас: " + ", ".join(
+                    f"{value} ({count})" for value, count in popular
+                )
+
+        text += "\n\nДля отмены отправь /cancel"
+
+        sent = bot.send_message(
+            chat_id,
+            text,
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        bot.register_next_step_handler(sent, process_search_query, field)
+        return
+
+    if data.startswith("search_page_"):
+        show_result_page(call, data[len("search_page_"):])
+
+
+def process_search_query(message, field):
+    text = (message.text or "").strip()
+
+    if text.startswith("/") or text in MENU_BUTTONS or not text:
+        bot.send_message(
+            message.chat.id,
+            "Поиск отменён.",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    run_search(message.chat.id, message.from_user.id, field, text)
+
+
+def run_search(chat_id, user_id, field, query):
+    results = search_profiles(user_id, query, field)
+
+    if not results:
+        bot.send_message(
+            chat_id,
+            "😕 Никого не нашлось. Попробуй другой запрос "
+            "или поиск по всем полям.",
+            reply_markup=search_menu_keyboard()
+        )
+        return
+
+    search_state[user_id] = {
+        "results": results,
+        "field": field,
+        "query": query
+    }
+
+    bot.send_message(
+        chat_id,
+        format_result(results[0], 0, len(results)),
+        parse_mode="HTML",
+        reply_markup=result_keyboard(0, len(results))
+    )
+
+
+def show_result_page(call, raw_position):
+    state = search_state.get(call.from_user.id)
+
+    if state is None:
+        bot.send_message(
+            call.message.chat.id,
+            "Результаты устарели. Запусти поиск заново.",
+            reply_markup=search_menu_keyboard()
+        )
+        return
+
+    try:
+        position = int(raw_position)
+    except ValueError:
+        return
+
+    results = state["results"]
+    if not 0 <= position < len(results):
+        return
+
+    try:
+        bot.edit_message_text(
+            format_result(results[position], position, len(results)),
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="HTML",
+            reply_markup=result_keyboard(position, len(results))
+        )
+    except telebot.apihelper.ApiTelegramException:
+        # например, "message is not modified" - можно игнорировать
+        pass
+
+
 @bot.callback_query_handler(
     func=lambda c: c.data and c.data.startswith("invite_")
 )
@@ -811,6 +1096,7 @@ def show_invitations(message):
     user_id = message.from_user.id
     pending = get_pending_invitations_for(user_id)
 
+  
     if not pending:
         bot.send_message(
             message.chat.id,
@@ -818,6 +1104,9 @@ def show_invitations(message):
             reply_markup=main_menu_keyboard()
         )
         return
+    user_data.pop(user_id, None)
+    search_state.pop(user_id, None)
+  
 
     bot.send_message(
         message.chat.id,
