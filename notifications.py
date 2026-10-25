@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationService:
-    """Сервис уведомлений TeamUp."""
+    """Сервис уведомлений HSE Match."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -40,7 +40,7 @@ class NotificationService:
 
         return self.send_notification(
             user_id,
-            f"🔔 Тебя пригласили в команду TeamUp!\n\n"
+            f"🔔 Тебя пригласили в HSE Match!\n\n"
             f"Отправитель: {sender_name}\n\n"
             "Открой бота, чтобы посмотреть приглашение."
         )
@@ -52,7 +52,7 @@ class NotificationService:
             user_id,
             f"✅ Отличные новости!\n\n"
             f"{recipient_name} принял(а) твоё приглашение "
-            "в команду TeamUp."
+            "в HSE Match."
         )
 
     def notify_invitation_rejected(self, user_id, recipient_name):

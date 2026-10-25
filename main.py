@@ -48,21 +48,17 @@ create_database()
 user_data = {}
 browse_state = {}
 
-
-# ─────────────────────────────────────────────────────────
-#  Вспомогательное
-# ─────────────────────────────────────────────────────────
-
 def require_text(handler):
-    """Декоратор: пропускает только непустой текст; /cancel отменяет диалог."""
     def wrapper(message):
-        if message.text == "/cancel":
+        text = (message.text or "").strip()
+        if text == "/cancel":
             cancel(message)
             return
-        if not message.text or not message.text.strip():
+        if not text or text.startswith("/"):
             sent = bot.send_message(
                 message.chat.id,
-                "Пожалуйста, отправь ответ текстом."
+                "⚠️ Отправь обычный текст, а не команду.\n"
+                "Для отмены используй /cancel."
             )
             bot.register_next_step_handler(sent, wrapper)
             return
@@ -78,7 +74,7 @@ def format_profile(profile, title="✨ <b>МОЯ АНКЕТА</b>"):
         f"{title}\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         f"👤 <b>{e(name or 'Без имени')}</b>\n"
-        "<i>Участник TeamUp</i>\n\n"
+        "<i>Участник HSE Match</i>\n\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "🛠 <b>НАВЫКИ</b>\n"
         f"{e(skills or 'Не указаны')}\n\n"
@@ -147,7 +143,7 @@ def start(message):
     else:
         bot.send_message(
             message.chat.id,
-            "👋 Привет! Добро пожаловать в TeamUp!\n\n"
+            "👋 Привет! Добро пожаловать в HSE Match!\n\n"
             "🤝 Этот бот поможет тебе найти единомышленников "
             "для учебных и IT-проектов.\n\n"
             "📝 Создай свою анкету, укажи навыки, интересы "
@@ -466,11 +462,13 @@ def validate_edit_input(message, handler):
         return
 
     menu_buttons = {
+        "📝 Зарегистрироваться",
         "👤 Моя анкета",
         "✏️ Изменить анкету",
+        "👀 Смотреть анкеты",
+        "📬 Мои приглашения",
         "🔍 Найти участников",
         "🗑 Удалить анкету",
-        "📝 Зарегистрироваться"
     }
 
     if message.text.strip() in menu_buttons:
@@ -488,9 +486,6 @@ def validate_edit_input(message, handler):
 
     handler(message)
 
-@bot.callback_query_handler(
-    func=lambda c: c.data and c.data in EDIT_FIELDS
-)
 @bot.callback_query_handler(
     func=lambda c: c.data and c.data in EDIT_FIELDS
 )
@@ -1294,7 +1289,7 @@ def request_contact_callback(call):
     try:
         bot.send_message(
             target_id,
-            "🤝 <b>Запрос на связь в TeamUp</b>\n\n"
+            "🤝 <b>Запрос на связь в HSE Match</b>\n\n"
             "Другой участник хочет связаться с тобой.\n"
             "Разрешить обмен контактами?",
             parse_mode="HTML",
@@ -1433,7 +1428,7 @@ def receive_shared_contact(message):
     user_id = message.from_user.id
 
     # Пользователь может поделиться только собственным контактом.
-    if contact.user_id != user_id:
+    if contact.user_id is not None and contact.user_id != user_id:
         bot.send_message(
             message.chat.id,
             "Пожалуйста, отправь именно свой контакт "
