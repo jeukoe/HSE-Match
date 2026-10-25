@@ -34,16 +34,7 @@ from database import (
     get_accepted_contact_partners,
 )
 
-load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-if not BOT_TOKEN:
-    raise RuntimeError(
-        "Не найден BOT_TOKEN. Проверь файл .env"
-    )
-
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot("8828680279:AAFNPEL0yNr8hyFEM65nct3SjWwkzAOM4po")
 
 create_database()
 
