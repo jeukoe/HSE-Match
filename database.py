@@ -110,10 +110,28 @@ def get_profile(user_id):
 
 def delete_profile(user_id):
     connection = sqlite3.connect("profiles.db")
-    cursor = connection.cursor()
-    cursor.execute("DELETE FROM profiles WHERE user_id = ?", (user_id,))
-    connection.commit()
-    connection.close()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "DELETE FROM contact_requests "
+            "WHERE requester_id = ? OR target_id = ?",
+            (user_id, user_id)
+        )
+        cursor.execute(
+            "DELETE FROM invitations "
+            "WHERE from_user_id = ? OR to_user_id = ?",
+            (user_id, user_id)
+        )
+        cursor.execute(
+            "DELETE FROM profiles WHERE user_id = ?",
+            (user_id,)
+        )
+        connection.commit()
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 def update_name(user_id, new_name):
     update_field(user_id, "name", new_name)
@@ -396,8 +414,12 @@ def create_contact_request(requester_id, target_id):
 
     cursor.execute("""
         SELECT status FROM contact_requests
-        WHERE requester_id = ? AND target_id = ?
-    """, (requester_id, target_id))
+        WHERE (requester_id = ? AND target_id = ?)
+           OR (requester_id = ? AND target_id = ?)
+    """, (
+        requester_id, target_id,
+        target_id, requester_id
+    ))
 
     existing = cursor.fetchone()
 
